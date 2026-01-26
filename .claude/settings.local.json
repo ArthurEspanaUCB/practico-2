@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php artisan db:show:*)",
+      "Bash(php artisan migrate:status:*)"
+    ]
+  }
+}
