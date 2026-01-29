@@ -113,4 +113,4 @@ El sistema estará disponible en `http://localhost:8000`.
 
 ## 📄 Licencia
 
-Este proyecto está bajo la licencia [MIT](LICENSE).
+Este proyecto está bajo la licencia [MIT](LICENSE)
