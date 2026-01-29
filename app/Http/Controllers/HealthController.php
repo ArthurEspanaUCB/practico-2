@@ -82,7 +82,7 @@ class HealthController extends Controller
         $error = null;
 
         try {
-            $testKey = 'health_check_' . uniqid();
+            $testKey = 'health_check_'.uniqid();
             Cache::put($testKey, 'ok', 10);
             $ok = Cache::get($testKey) === 'ok';
             Cache::forget($testKey);

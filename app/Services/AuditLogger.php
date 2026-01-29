@@ -29,20 +29,20 @@ class AuditLogger
             $fecha = now()->format('Y-m-d H:i:s');
 
             // Construir mensaje multilínea con contexto de release
-            $mensaje = "\n[" . $fecha . ']';
-            $mensaje .= "\n[RELEASE: " . $release . '] [ENV: ' . $environment . ']';
-            $mensaje .= "\nTIPO: " . strtoupper($tipo);
-            $mensaje .= "\nNIVEL: " . $nivel;
-            $mensaje .= "\nDESCRIPCIÓN: " . $descripcion;
-            $mensaje .= "\nUSER_ID: " . ($userId ?? 'N/A');
-            $mensaje .= "\nUSUARIO: " . $userName . ($userEmail ? ' (' . $userEmail . ')' : '');
-            $mensaje .= "\nIP ORIGEN: " . $ip;
-            $mensaje .= "\nUBICACIÓN: " . $url;
+            $mensaje = "\n[".$fecha.']';
+            $mensaje .= "\n[RELEASE: ".$release.'] [ENV: '.$environment.']';
+            $mensaje .= "\nTIPO: ".strtoupper($tipo);
+            $mensaje .= "\nNIVEL: ".$nivel;
+            $mensaje .= "\nDESCRIPCIÓN: ".$descripcion;
+            $mensaje .= "\nUSER_ID: ".($userId ?? 'N/A');
+            $mensaje .= "\nUSUARIO: ".$userName.($userEmail ? ' ('.$userEmail.')' : '');
+            $mensaje .= "\nIP ORIGEN: ".$ip;
+            $mensaje .= "\nUBICACIÓN: ".$url;
 
             if ($exception) {
                 // Si es un error crítico, registrar detalles técnicos
-                $mensaje .= "\nERROR MSG: " . $exception->getMessage();
-                $mensaje .= "\nARCHIVO: " . $exception->getFile() . ':' . $exception->getLine();
+                $mensaje .= "\nERROR MSG: ".$exception->getMessage();
+                $mensaje .= "\nARCHIVO: ".$exception->getFile().':'.$exception->getLine();
             }
 
             $mensaje .= "\n--------------------------------------------------";
@@ -63,7 +63,7 @@ class AuditLogger
             Log::channel('daily')->info($mensaje, $context);
         } catch (\Exception $e) {
             // Fallback por si falla el logging mismo
-            Log::error('Error crítico al intentar registrar log de auditoría: ' . $e->getMessage());
+            Log::error('Error crítico al intentar registrar log de auditoría: '.$e->getMessage());
         }
     }
 
@@ -77,7 +77,7 @@ class AuditLogger
     {
         $desc = $descripcion;
         if ($datos) {
-            $desc .= ' | Datos: ' . json_encode($datos);
+            $desc .= ' | Datos: '.json_encode($datos);
         }
         self::log('INSERCIÓN', 'success', $desc);
     }
@@ -86,7 +86,7 @@ class AuditLogger
     {
         $desc = $descripcion;
         if ($cambios) {
-            $desc .= ' | Cambios: ' . json_encode($cambios);
+            $desc .= ' | Cambios: '.json_encode($cambios);
         }
         self::log('ACTUALIZACIÓN', 'info', $desc);
     }
@@ -95,7 +95,7 @@ class AuditLogger
     {
         $desc = $descripcion;
         if ($id) {
-            $desc .= ' | ID Eliminado: ' . $id;
+            $desc .= ' | ID Eliminado: '.$id;
         }
         self::log('ELIMINACIÓN', 'warning', $desc);
     }

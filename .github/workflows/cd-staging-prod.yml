@@ -20,7 +20,7 @@ jobs:
       - name: 🐘 Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: '8.2'
           extensions: mbstring, pdo, pdo_pgsql, pgsql
           coverage: none
 
@@ -196,26 +196,18 @@ jobs:
     runs-on: self-hosted
     needs: [deploy_staging]
     steps:
-      - name: 🔑 Configurar SSH
+      - name: 🔄 Ejecutar rollback en staging (local)
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: 🔄 Ejecutar rollback en staging
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} "\
-            echo '🔍 Buscando release anterior...' && \
-            PREV=\$(ls -1dt /var/www/comprasventas/releases/*/ 2>/dev/null | sed -n '2p' | xargs -r dirname | xargs -r basename) && \
-            if [ -n \"\$PREV\" ]; then \
-              echo '🔄 Rollback a release: '\$PREV && \
-              ln -sfn /var/www/comprasventas/releases/\$PREV /var/www/comprasventas/current && \
-              echo '✅ Rollback completado'; \
-            else \
-              echo '❌ No hay release anterior para rollback'; \
-              exit 1; \
-            fi"
+          echo '🔍 Buscando release anterior...'
+          PREV=$(ls -1dt /var/www/comprasventas/releases/*/ 2>/dev/null | sed -n '2p' | xargs -r dirname | xargs -r basename)
+          if [ -n "$PREV" ]; then
+            echo "🔄 Rollback a release: $PREV"
+            ln -sfn /var/www/comprasventas/releases/$PREV /var/www/comprasventas/current
+            echo '✅ Rollback completado'
+          else
+            echo '❌ No hay release anterior para rollback'
+            exit 1
+          fi
 
       - name: ✅ Verificar rollback
         run: |
@@ -231,26 +223,18 @@ jobs:
     runs-on: self-hosted
     needs: [deploy_production]
     steps:
-      - name: 🔑 Configurar SSH
+      - name: 🔄 Ejecutar rollback en producción (local)
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: 🔄 Ejecutar rollback en producción
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} "\
-            echo '🔍 Buscando release anterior...' && \
-            PREV=\$(ls -1dt /var/www/comprasventas/releases/*/ 2>/dev/null | sed -n '2p' | xargs -r dirname | xargs -r basename) && \
-            if [ -n \"\$PREV\" ]; then \
-              echo '🔄 Rollback a release: '\$PREV && \
-              ln -sfn /var/www/comprasventas/releases/\$PREV /var/www/comprasventas/current && \
-              echo '✅ Rollback completado'; \
-            else \
-              echo '❌ No hay release anterior para rollback'; \
-              exit 1; \
-            fi"
+          echo '🔍 Buscando release anterior...'
+          PREV=$(ls -1dt /var/www/comprasventas/releases/*/ 2>/dev/null | sed -n '2p' | xargs -r dirname | xargs -r basename)
+          if [ -n "$PREV" ]; then
+            echo "🔄 Rollback a release: $PREV"
+            ln -sfn /var/www/comprasventas/releases/$PREV /var/www/comprasventas/current
+            echo '✅ Rollback completado'
+          else
+            echo '❌ No hay release anterior para rollback'
+            exit 1
+          fi
 
       - name: ✅ Verificar rollback
         run: |

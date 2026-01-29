@@ -1,0 +1,86 @@
+name: CI - Tests & Quality
+
+on:
+  push:
+    branches: ["main", "develop", "feature/*"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  # ============================================================
+  # JOB: Quality & Tests
+  # ============================================================
+  quality:
+    name: 🔍 Code Quality & Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: comprasventas_user
+          POSTGRES_PASSWORD: Password123
+          POSTGRES_DB: sistema_ventadb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 📥 Checkout código
+        uses: actions/checkout@v4
+
+      - name: 🐘 Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo, pdo_pgsql, pgsql
+          coverage: none
+
+      - name: 📦 Cachear dependencias Composer
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: composer-
+
+      - name: 📦 Instalar dependencias PHP
+        run: composer install --prefer-dist --no-interaction
+
+      - name: 🎨 Laravel Pint (Code Style)
+        run: ./vendor/bin/pint --test
+
+      - name: 🔬 PHPStan (Static Analysis)
+        run: ./vendor/bin/phpstan analyse --memory-limit=1G
+
+      - name: 🧪 PHPUnit Tests
+        run: php artisan test
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: pgsql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5432
+          DB_DATABASE: sistema_ventadb
+          DB_USERNAME: comprasventas_user
+          DB_PASSWORD: Password123
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Instalar dependencias NPM
+        run: npm ci
+
+      - name: 🧹 ESLint (JavaScript Lint)
+        run: npm run lint
+
+      - name: 🧪 Vitest Tests
+        run: npm run test
+
+      - name: 🔨 Build Frontend
+        run: npm run build
