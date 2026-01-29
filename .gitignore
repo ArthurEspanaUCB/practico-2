@@ -1,0 +1,3 @@
+# Ignorar archivos y carpetas del self-hosted runner
+actions-runner/
+actions-runner-linux-x64-*.tar.gz
