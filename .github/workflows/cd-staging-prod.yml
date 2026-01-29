@@ -1,0 +1,276 @@
+name: CD - Staging + Production
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  # ============================================================
+  # JOB 1: BUILD - Construye el artefacto UNA SOLA VEZ
+  # ============================================================
+  build:
+    name: 🏗️ Build Artifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout código
+        uses: actions/checkout@v4
+
+      - name: 🐘 Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo, pdo_pgsql, pgsql
+          coverage: none
+
+      - name: 📦 Instalar dependencias PHP (producción)
+        run: composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Instalar dependencias NPM
+        run: npm ci
+
+      - name: 🔨 Build assets frontend
+        run: npm run build
+
+      - name: 🏷️ Generar RELEASE_ID
+        run: |
+          echo "RELEASE_ID=$(date +%Y%m%d_%H%M%S)_${GITHUB_SHA::8}" >> $GITHUB_ENV
+          echo "$(date +%Y%m%d_%H%M%S)" > RELEASE_ID
+          echo "${GITHUB_SHA}" >> RELEASE_ID
+          echo "${{ github.ref_name }}" >> RELEASE_ID
+
+      - name: 📤 Subir artefacto de release
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.ref_name }}
+          retention-days: 7
+          path: |
+            app/
+            bootstrap/
+            config/
+            database/
+            public/
+            resources/
+            routes/
+            storage/
+            vendor/
+            artisan
+            composer.json
+            composer.lock
+            RELEASE_ID
+          exclude: |
+            **/.git/**
+            **/node_modules/**
+            **/tests/**
+            **/.env*
+
+  # ============================================================
+  # JOB 2: DEPLOY A STAGING (automático en push a main)
+  # ============================================================
+  deploy_staging:
+    name: 🚀 Deploy to Staging
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    needs: [build]
+    steps:
+      - name: 📥 Descargar artefacto
+        uses: actions/download-artifact@v4
+        with:
+          name: release-${{ github.ref_name }}
+          path: ./release
+
+      - name: 🔑 Configurar SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: 📂 Crear directorio de release en staging
+        run: |
+          RELEASE="${{ github.sha }}"
+          ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} "\
+            mkdir -p /var/www/comprasventas/releases/$RELEASE && \
+            mkdir -p /var/www/comprasventas/shared"
+
+      - name: 📤 Transferir archivos via rsync
+        run: |
+          RELEASE="${{ github.sha }}"
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.env' \
+            ./release/ \
+            ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}:/var/www/comprasventas/releases/$RELEASE/
+
+      - name: ⚙️ Ejecutar deploy atómico en staging
+        run: |
+          RELEASE="${{ github.sha }}"
+          ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} "\
+            cd /var/www/comprasventas/releases/$RELEASE && \
+            ln -sfn /var/www/comprasventas/shared/.env .env && \
+            php artisan optimize:clear || true && \
+            php artisan config:cache && \
+            php artisan route:cache && \
+            php artisan view:cache && \
+            php artisan migrate --force && \
+            ln -sfn /var/www/comprasventas/releases/$RELEASE /var/www/comprasventas/current && \
+            echo '✅ Symlink actualizado a release: $RELEASE'"
+
+      - name: ✅ Health Check Staging
+        run: |
+          echo "🔍 Verificando health endpoint..."
+          sleep 5
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.STAGING_APP_URL }}/api/health" || echo "000")
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Health check PASSED (HTTP $HTTP_STATUS)"
+            curl -s "${{ secrets.STAGING_APP_URL }}/api/health" | head -100
+          else
+            echo "❌ Health check FAILED (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+
+  # ============================================================
+  # JOB 3: DEPLOY A PRODUCCIÓN (requiere aprobación manual)
+  # ============================================================
+  deploy_production:
+    name: 🚀 Deploy to Production
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production
+    needs: [build]
+    steps:
+      - name: 📥 Descargar artefacto
+        uses: actions/download-artifact@v4
+        with:
+          name: release-${{ github.ref_name }}
+          path: ./release
+
+      - name: 🔑 Configurar SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: 📂 Crear directorio de release en producción
+        run: |
+          RELEASE="${{ github.ref_name }}"
+          [ -z "$RELEASE" ] && RELEASE="manual-$(date +%Y%m%d_%H%M%S)"
+          echo "RELEASE_TAG=$RELEASE" >> $GITHUB_ENV
+          ssh -o StrictHostKeyChecking=no ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} "\
+            mkdir -p /var/www/comprasventas/releases/$RELEASE && \
+            mkdir -p /var/www/comprasventas/shared"
+
+      - name: 📤 Transferir archivos via rsync
+        run: |
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='.env' \
+            ./release/ \
+            ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:/var/www/comprasventas/releases/${{ env.RELEASE_TAG }}/
+
+      - name: ⚙️ Ejecutar deploy atómico en producción
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} "\
+            cd /var/www/comprasventas/releases/${{ env.RELEASE_TAG }} && \
+            ln -sfn /var/www/comprasventas/shared/.env .env && \
+            php artisan optimize:clear || true && \
+            php artisan config:cache && \
+            php artisan route:cache && \
+            php artisan view:cache && \
+            php artisan migrate --force && \
+            ln -sfn /var/www/comprasventas/releases/${{ env.RELEASE_TAG }} /var/www/comprasventas/current && \
+            echo '✅ Symlink actualizado a release: ${{ env.RELEASE_TAG }}'"
+
+      - name: ✅ Health Check Producción
+        run: |
+          echo "🔍 Verificando health endpoint en producción..."
+          sleep 5
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.PROD_APP_URL }}/api/health" || echo "000")
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Health check PASSED (HTTP $HTTP_STATUS)"
+            curl -s "${{ secrets.PROD_APP_URL }}/api/health" | head -100
+          else
+            echo "❌ Health check FAILED (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+
+  # ============================================================
+  # JOB 4: ROLLBACK STAGING (en caso de fallo)
+  # ============================================================
+  rollback_staging:
+    name: 🔄 Rollback Staging
+    if: failure() && needs.deploy_staging.result == 'failure'
+    runs-on: ubuntu-latest
+    needs: [deploy_staging]
+    steps:
+      - name: 🔑 Configurar SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: 🔄 Ejecutar rollback en staging
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} "\
+            echo '🔍 Buscando release anterior...' && \
+            PREV=\$(ls -1dt /var/www/comprasventas/releases/*/ 2>/dev/null | sed -n '2p' | xargs -r dirname | xargs -r basename) && \
+            if [ -n \"\$PREV\" ]; then \
+              echo '🔄 Rollback a release: '\$PREV && \
+              ln -sfn /var/www/comprasventas/releases/\$PREV /var/www/comprasventas/current && \
+              echo '✅ Rollback completado'; \
+            else \
+              echo '❌ No hay release anterior para rollback'; \
+              exit 1; \
+            fi"
+
+      - name: ✅ Verificar rollback
+        run: |
+          sleep 3
+          curl -f "${{ secrets.STAGING_APP_URL }}/api/health" || echo "⚠️ Health check post-rollback falló"
+
+  # ============================================================
+  # JOB 5: ROLLBACK PRODUCCIÓN (en caso de fallo)
+  # ============================================================
+  rollback_production:
+    name: 🔄 Rollback Production
+    if: failure() && needs.deploy_production.result == 'failure'
+    runs-on: ubuntu-latest
+    needs: [deploy_production]
+    steps:
+      - name: 🔑 Configurar SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: 🔄 Ejecutar rollback en producción
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} "\
+            echo '🔍 Buscando release anterior...' && \
+            PREV=\$(ls -1dt /var/www/comprasventas/releases/*/ 2>/dev/null | sed -n '2p' | xargs -r dirname | xargs -r basename) && \
+            if [ -n \"\$PREV\" ]; then \
+              echo '🔄 Rollback a release: '\$PREV && \
+              ln -sfn /var/www/comprasventas/releases/\$PREV /var/www/comprasventas/current && \
+              echo '✅ Rollback completado'; \
+            else \
+              echo '❌ No hay release anterior para rollback'; \
+              exit 1; \
+            fi"
+
+      - name: ✅ Verificar rollback
+        run: |
+          sleep 3
+          curl -f "${{ secrets.PROD_APP_URL }}/api/health" || echo "⚠️ Health check post-rollback falló"
