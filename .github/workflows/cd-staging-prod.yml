@@ -12,7 +12,7 @@ jobs:
   # ============================================================
   build:
     name: 🏗️ Build Artifact
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: 📥 Checkout código
         uses: actions/checkout@v4
@@ -20,7 +20,7 @@ jobs:
       - name: 🐘 Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: '8.4'
           extensions: mbstring, pdo, pdo_pgsql, pgsql
           coverage: none
 
@@ -77,7 +77,7 @@ jobs:
   deploy_staging:
     name: 🚀 Deploy to Staging
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     environment: staging
     needs: [build]
     steps:
@@ -144,7 +144,7 @@ jobs:
   deploy_production:
     name: 🚀 Deploy to Production
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     environment: production
     needs: [build]
     steps:
@@ -211,7 +211,7 @@ jobs:
   rollback_staging:
     name: 🔄 Rollback Staging
     if: failure() && needs.deploy_staging.result == 'failure'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [deploy_staging]
     steps:
       - name: 🔑 Configurar SSH
@@ -246,7 +246,7 @@ jobs:
   rollback_production:
     name: 🔄 Rollback Production
     if: failure() && needs.deploy_production.result == 'failure'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [deploy_production]
     steps:
       - name: 🔑 Configurar SSH
