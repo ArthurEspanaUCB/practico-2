@@ -46,7 +46,8 @@ class HealthController extends Controller
                 'name' => config('app.name'),
                 'env' => config('app.env'),
                 'debug' => (bool) config('app.debug'),
-                'version' => config('app.version', '1.0.0'),
+                'version' => config('app.version', 'dev'),
+                'release' => config('app.version', 'dev'),
             ],
             ...$checks,
         ], $healthy ? 200 : 503);
@@ -81,7 +82,7 @@ class HealthController extends Controller
         $error = null;
 
         try {
-            $testKey = 'health_check_'.uniqid();
+            $testKey = 'health_check_' . uniqid();
             Cache::put($testKey, 'ok', 10);
             $ok = Cache::get($testKey) === 'ok';
             Cache::forget($testKey);

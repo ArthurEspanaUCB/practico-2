@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Version (Release)
+    |--------------------------------------------------------------------------
+    |
+    | This value represents the current release version of the application.
+    | It is used for logging, observability, and tracking deployments.
+    | Set via RELEASE_VERSION environment variable during deploy.
+    |
+    */
+
+    'version' => env('RELEASE_VERSION', 'dev'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |
