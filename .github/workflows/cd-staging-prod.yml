@@ -87,21 +87,13 @@ jobs:
           name: release-${{ github.ref_name }}
           path: ./release
 
-      - name: 🔑 Configurar SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: 📂 Crear directorio de release en staging
+      - name: 📂 Crear directorio de release en staging (local)
         run: |
           RELEASE="${{ github.sha }}"
-          ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} "\
-            mkdir -p /var/www/comprasventas/releases/$RELEASE && \
-            mkdir -p /var/www/comprasventas/shared"
+          mkdir -p /var/www/comprasventas/releases/$RELEASE
+          mkdir -p /var/www/comprasventas/shared
 
-      - name: 📤 Transferir archivos via rsync
+      - name: 📤 Transferir archivos via rsync (local)
         run: |
           RELEASE="${{ github.sha }}"
           rsync -avz --delete \
@@ -109,21 +101,20 @@ jobs:
             --exclude='node_modules' \
             --exclude='.env' \
             ./release/ \
-            ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}:/var/www/comprasventas/releases/$RELEASE/
+            /var/www/comprasventas/releases/$RELEASE/
 
-      - name: ⚙️ Ejecutar deploy atómico en staging
+      - name: ⚙️ Ejecutar deploy atómico en staging (local)
         run: |
           RELEASE="${{ github.sha }}"
-          ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} "\
-            cd /var/www/comprasventas/releases/$RELEASE && \
-            ln -sfn /var/www/comprasventas/shared/.env .env && \
-            php artisan optimize:clear || true && \
-            php artisan config:cache && \
-            php artisan route:cache && \
-            php artisan view:cache && \
-            php artisan migrate --force && \
-            ln -sfn /var/www/comprasventas/releases/$RELEASE /var/www/comprasventas/current && \
-            echo '✅ Symlink actualizado a release: $RELEASE'"
+          cd /var/www/comprasventas/releases/$RELEASE
+          ln -sfn /var/www/comprasventas/shared/.env .env
+          php artisan optimize:clear || true
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+          php artisan migrate --force
+          ln -sfn /var/www/comprasventas/releases/$RELEASE /var/www/comprasventas/current
+          echo "✅ Symlink actualizado a release: $RELEASE"
 
       - name: ✅ Health Check Staging
         run: |
@@ -154,43 +145,34 @@ jobs:
           name: release-${{ github.ref_name }}
           path: ./release
 
-      - name: 🔑 Configurar SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: 📂 Crear directorio de release en producción
+      - name: 📂 Crear directorio de release en producción (local)
         run: |
           RELEASE="${{ github.ref_name }}"
           [ -z "$RELEASE" ] && RELEASE="manual-$(date +%Y%m%d_%H%M%S)"
           echo "RELEASE_TAG=$RELEASE" >> $GITHUB_ENV
-          ssh -o StrictHostKeyChecking=no ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} "\
-            mkdir -p /var/www/comprasventas/releases/$RELEASE && \
-            mkdir -p /var/www/comprasventas/shared"
+          mkdir -p /var/www/comprasventas/releases/$RELEASE
+          mkdir -p /var/www/comprasventas/shared
 
-      - name: 📤 Transferir archivos via rsync
+      - name: 📤 Transferir archivos via rsync (local)
         run: |
           rsync -avz --delete \
             --exclude='.git' \
             --exclude='node_modules' \
             --exclude='.env' \
             ./release/ \
-            ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:/var/www/comprasventas/releases/${{ env.RELEASE_TAG }}/
+            /var/www/comprasventas/releases/${{ env.RELEASE_TAG }}/
 
-      - name: ⚙️ Ejecutar deploy atómico en producción
+      - name: ⚙️ Ejecutar deploy atómico en producción (local)
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} "\
-            cd /var/www/comprasventas/releases/${{ env.RELEASE_TAG }} && \
-            ln -sfn /var/www/comprasventas/shared/.env .env && \
-            php artisan optimize:clear || true && \
-            php artisan config:cache && \
-            php artisan route:cache && \
-            php artisan view:cache && \
-            php artisan migrate --force && \
-            ln -sfn /var/www/comprasventas/releases/${{ env.RELEASE_TAG }} /var/www/comprasventas/current && \
-            echo '✅ Symlink actualizado a release: ${{ env.RELEASE_TAG }}'"
+          cd /var/www/comprasventas/releases/${{ env.RELEASE_TAG }}
+          ln -sfn /var/www/comprasventas/shared/.env .env
+          php artisan optimize:clear || true
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+          php artisan migrate --force
+          ln -sfn /var/www/comprasventas/releases/${{ env.RELEASE_TAG }} /var/www/comprasventas/current
+          echo "✅ Symlink actualizado a release: ${{ env.RELEASE_TAG }}"
 
       - name: ✅ Health Check Producción
         run: |
